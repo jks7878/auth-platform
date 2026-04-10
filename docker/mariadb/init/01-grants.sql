@@ -1,0 +1,2 @@
+GRANT CREATE, DROP ON *.* TO 'auth'@'%';
+FLUSH PRIVILEGES;

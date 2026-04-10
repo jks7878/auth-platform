@@ -84,6 +84,9 @@ out
 .nuxt
 dist
 
+# Prisma build / generate output
+/api/prisma/generated
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js
