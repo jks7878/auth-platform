@@ -1,121 +1,368 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useMemo, useState } from "react";
+import axios from "axios";
 
-function App() {
-  const [count, setCount] = useState(0)
+type Mode = "sign-in" | "sign-up";
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+type FormState = {
+  username: string;
+  password: string;
+  confirmPassword: string;
+};
 
-      <div className="ticks"></div>
+type FormErrors = Partial<Record<keyof FormState, string>>;
+type TouchedState = Record<keyof FormState, boolean>;
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+function validateSignIn(form: FormState): FormErrors {
+  const errors: FormErrors = {};
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+  if (!form.username.trim()) {
+    errors.username = "username을 입력해주세요.";
+  }
+
+  if (!form.password.trim()) {
+    errors.password = "password를 입력해주세요.";
+  }
+
+  return errors;
 }
 
-export default App
+function validateSignUp(form: FormState): FormErrors {
+  const errors: FormErrors = {};
+
+  if (!form.username.trim()) {
+    errors.username = "username을 입력해주세요.";
+  }
+
+  if (!form.password.trim()) {
+    errors.password = "password를 입력해주세요.";
+  } else if (form.password.length < 8) {
+    errors.password = "password는 8자 이상이어야 합니다.";
+  }
+
+  if (!form.confirmPassword.trim()) {
+    errors.confirmPassword = "confirm password를 입력해주세요.";
+  } else if (form.password !== form.confirmPassword) {
+    errors.confirmPassword = "비밀번호가 일치하지 않습니다.";
+  }
+
+  return errors;
+}
+
+function validate(mode: Mode, form: FormState): FormErrors {
+  return mode === "sign-in" ? validateSignIn(form) : validateSignUp(form);
+}
+
+const initialForm: FormState = {
+  username: "",
+  password: "",
+  confirmPassword: "",
+};
+
+const initialTouched: TouchedState = {
+  username: false,
+  password: false,
+  confirmPassword: false,
+};
+
+export default function SignForm() {
+  const [mode, setMode] = useState<Mode>("sign-in");
+  const [form, setForm] = useState<FormState>(initialForm);
+  const [touched, setTouched] = useState<TouchedState>(initialTouched);
+  const [loading, setLoading] = useState(false);
+  const [serverMessage, setServerMessage] = useState("");
+
+  const errors = useMemo(() => validate(mode, form), [mode, form]);
+  const isValid = Object.keys(errors).length === 0;
+
+  function updateField(key: keyof FormState, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+
+    setServerMessage("");
+  }
+
+  function handleBlur(key: keyof FormState) {
+    setTouched((prev) => ({
+      ...prev,
+      [key]: true,
+    }));
+  }
+
+  function changeMode(nextMode: Mode) {
+    setMode(nextMode);
+    setServerMessage("");
+    setTouched(initialTouched);
+    setForm((prev) => ({
+      ...prev,
+      password: "",
+      confirmPassword: "",
+    }));
+  }
+
+  async function submitSignForm() {
+    if (mode === "sign-in") {
+      return axios.post("http://localhost:3000/auth/sign-in", {
+        username: form.username,
+        password: form.password,
+      });
+    }
+
+    return axios.post("http://localhost:3000/auth/sign-up", {
+      username: form.username,
+      password: form.password,
+    });
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    setTouched({
+      username: true,
+      password: true,
+      confirmPassword: mode === "sign-up",
+    });
+
+    setServerMessage("");
+
+    if (!isValid) return;
+
+    setLoading(true);
+
+    try {
+      const response = await submitSignForm();
+
+      console.log("success:", response.data);
+
+      if (mode === "sign-up") {
+        setServerMessage("회원가입이 완료되었습니다. 로그인해주세요.");
+        setMode("sign-in");
+        setForm({
+          username: form.username,
+          password: "",
+          confirmPassword: "",
+        });
+        setTouched(initialTouched);
+        return;
+      }
+
+      setServerMessage("로그인에 성공했습니다.");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message;
+
+        setServerMessage(
+          typeof message === "string"
+            ? message
+            : "요청 처리 중 오류가 발생했습니다."
+        );
+      } else {
+        setServerMessage("알 수 없는 오류가 발생했습니다.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "520px",
+        margin: "0 auto",
+        padding: "32px",
+      }}
+    >
+      <h1 style={{ textAlign: "center", marginBottom: "32px" }}>
+        {mode === "sign-in" ? "Sign In" : "Sign Up"}
+      </h1>
+
+      <p
+        style={{
+          textAlign: "center",
+          color: "#666",
+          marginBottom: "24px",
+        }}
+      >
+        인증 흐름 테스트용 기본 폼
+      </p>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          marginBottom: "24px",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => changeMode("sign-in")}
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: "14px",
+            borderRadius: "10px",
+            border: "1px solid #d9dce1",
+            backgroundColor: mode === "sign-in" ? "#0b1736" : "#eef1f5",
+            color: mode === "sign-in" ? "#fff" : "#111",
+            cursor: "pointer",
+          }}
+        >
+          Sign In
+        </button>
+
+        <button
+          type="button"
+          onClick={() => changeMode("sign-up")}
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: "14px",
+            borderRadius: "10px",
+            border: "1px solid #d9dce1",
+            backgroundColor: mode === "sign-up" ? "#0b1736" : "#eef1f5",
+            color: mode === "sign-up" ? "#fff" : "#111",
+            cursor: "pointer",
+          }}
+        >
+          Sign Up
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: "16px" }}>
+          <input
+            type="text"
+            placeholder="username"
+            value={form.username}
+            onChange={(e) => updateField("username", e.target.value)}
+            onBlur={() => handleBlur("username")}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: "14px 16px",
+              borderRadius: "10px",
+              border: "1px solid #cfd4dc",
+              fontSize: "16px",
+              boxSizing: "border-box",
+            }}
+          />
+          {touched.username && errors.username && (
+            <p
+              style={{
+                marginTop: "8px",
+                color: "red",
+                fontSize: "14px",
+                textAlign: "center",
+              }}
+            >
+              {errors.username}
+            </p>
+          )}
+        </div>
+
+        <div style={{ marginBottom: "16px" }}>
+          <input
+            type="password"
+            placeholder="password"
+            value={form.password}
+            onChange={(e) => updateField("password", e.target.value)}
+            onBlur={() => handleBlur("password")}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: "14px 16px",
+              borderRadius: "10px",
+              border: "1px solid #cfd4dc",
+              fontSize: "16px",
+              boxSizing: "border-box",
+            }}
+          />
+          {touched.password && errors.password && (
+            <p
+              style={{
+                marginTop: "8px",
+                color: "red",
+                fontSize: "14px",
+                textAlign: "center",
+              }}
+            >
+              {errors.password}
+            </p>
+          )}
+        </div>
+
+        {mode === "sign-up" && (
+          <div style={{ marginBottom: "16px" }}>
+            <input
+              type="password"
+              placeholder="confirm password"
+              value={form.confirmPassword}
+              onChange={(e) => updateField("confirmPassword", e.target.value)}
+              onBlur={() => handleBlur("confirmPassword")}
+              disabled={loading}
+              style={{
+                width: "100%",
+                padding: "14px 16px",
+                borderRadius: "10px",
+                border: "1px solid #cfd4dc",
+                fontSize: "16px",
+                boxSizing: "border-box",
+              }}
+            />
+            {touched.confirmPassword && errors.confirmPassword && (
+              <p
+                style={{
+                  marginTop: "8px",
+                  color: "red",
+                  fontSize: "14px",
+                  textAlign: "center",
+                }}
+              >
+                {errors.confirmPassword}
+              </p>
+            )}
+          </div>
+        )}
+
+        {serverMessage && (
+          <p
+            style={{
+              marginBottom: "16px",
+              color: serverMessage.includes("성공") || serverMessage.includes("완료")
+                ? "green"
+                : "red",
+              fontSize: "14px",
+              textAlign: "center",
+            }}
+          >
+            {serverMessage}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: "10px",
+            border: "none",
+            backgroundColor: "#0b1736",
+            color: "#fff",
+            fontSize: "18px",
+            cursor: "pointer",
+            opacity: loading ? 0.7 : 1,
+          }}
+        >
+          {loading
+            ? "처리 중..."
+            : mode === "sign-in"
+            ? "Sign In"
+            : "Sign Up"}
+        </button>
+      </form>
+    </div>
+  );
+}

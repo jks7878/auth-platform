@@ -8,8 +8,6 @@ import { PrismaModule } from './modules/prisma/prisma.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-
-      // 여러 env 파일 읽기
       envFilePath: [
         '.env',
         '../.env'

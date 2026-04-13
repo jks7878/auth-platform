@@ -1,24 +1,25 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
+/** Service */
 import { PrismaService } from '@/modules/prisma/prisma.service';
-
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+/** DTO */
+import { SignUpDto } from './dto/sign-up.dto';
+import { SignInDto } from './dto/sign-in.dto';
 
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async signup(createAuthDto: CreateAuthDto) {
-    const { username, password, role } = createAuthDto;
+  async signup(signUpDto: SignUpDto) {
+    const { username, password } = signUpDto;
 
     const existingUser = await this.prisma.user.findUnique({
       where: { username },
     });
 
     if (existingUser) {
-      throw new BadRequestException('이미 사용 중인 이메일입니다.');
+      throw new ConflictException('이미 사용 중인 사용자명입니다.');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -27,7 +28,6 @@ export class AuthService {
       data: {
         username,
         password: hashedPassword,
-        role,
       },
       select: {
         id: true,
@@ -38,20 +38,26 @@ export class AuthService {
     return user;
   }
 
+  async signIn(signInDto: SignInDto) {
+    const { username, password } = signInDto;
 
-  findAll() {
-    return `This action returns all auth`;
-  }
+    const user = await this.prisma.user.findUnique({
+      where: {
+        username,
+      },
+    });
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
+    if (!user) {
+      throw new UnauthorizedException("아이디 또는 비밀번호가 올바르지 않습니다.");
+    }
 
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
+    const isPasswordMatched = await bcrypt.compare(password, user.password);
 
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+    if (!isPasswordMatched) {
+      throw new UnauthorizedException("아이디 또는 비밀번호가 올바르지 않습니다.");
+    }
+  
+    const { password: _, ...result } = user;
+    return result;
   }
 }
