@@ -1,20 +1,26 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+
 import * as bcrypt from 'bcrypt';
 
 /** Service */
 import { PrismaService } from '@/modules/prisma/prisma.service';
+import { TokenService } from '@/modules/token/token.service';
 /** DTO */
 import { SignUpDto } from './dto/sign-up.dto';
 import { SignInDto } from './dto/sign-in.dto';
 
+
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly tokenService: TokenService
+  ) {}
 
   async signup(signUpDto: SignUpDto) {
     const { username, password } = signUpDto;
 
-    const existingUser = await this.prisma.user.findUnique({
+    const existingUser = await this.prismaService.user.findUnique({
       where: { username },
     });
 
@@ -24,7 +30,7 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await this.prisma.user.create({
+    const user = await this.prismaService.user.create({
       data: {
         username,
         password: hashedPassword,
@@ -41,7 +47,7 @@ export class AuthService {
   async signIn(signInDto: SignInDto) {
     const { username, password } = signInDto;
 
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prismaService.user.findUnique({
       where: {
         username,
       },
@@ -57,7 +63,10 @@ export class AuthService {
       throw new UnauthorizedException("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
   
-    const { password: _, ...result } = user;
-    return result;
+    return await this.tokenService.createAuthTokens(user.id, user.username);
+  }
+
+  async refresh(id: number, username: string) {
+    return await this.tokenService.refreshAuthTokens(id, username);
   }
 }
