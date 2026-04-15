@@ -32,6 +32,7 @@ Auth Platform
 # Architecture Overview
 
 이 프로젝트는 인증 로직을 각 서비스에서 개별적으로 구현하는 대신, 인증 책임을 하나의 플랫폼으로 분리하는 구조를 목표로 합니다.
+
 NestJS 기반 인증 서버가 사용자 인증과 토큰 lifecycle을 관리하고, React 기반 테스트 클라이언트를 통해 인증 흐름이 실제로 어떻게 동작하는지 단계적으로 검증할 수 있도록 구성했습니다.
 
 기본 인증 단계에서는 bcrypt 기반 비밀번호 해싱과 validation을 적용하여 사용자 자격 증명을 안전하게 처리합니다. 이후 인증 상태를 stateless하게 유지하기 위해 JWT 기반 access token / refresh token 구조를 도입했으며, 토큰은 httpOnly 쿠키를 통해 전달하여 XSS 환경에서의 노출 가능성을 줄였습니다.
