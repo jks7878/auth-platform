@@ -1,4 +1,4 @@
-import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError } from 'axios';
 import type { RetryableRequestConfig } from './types';
 
 type AuthFlowEventDetail = {
