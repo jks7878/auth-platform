@@ -1,16 +1,21 @@
 services:
   mariadb:
     image: mariadb:11
-    environment:
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
-      MARIADB_DATABASE: ${MARIADB_DATABASE}
-      MARIADB_USER: ${MARIADB_USER}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    env_file:
+      - ./api/.env
     ports:
       - "${MARIADB_PORT}:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./docker/mariadb/init:/docker-entrypoint-initdb.d
+  redis:
+    image: redis:7-alpine
+    container_name: auth-platform-redis
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
 volumes:
   mariadb_data:
-  
+  redis_data:

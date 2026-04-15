@@ -1,16 +1,12 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
+
+import { api } from "@/api/axios";
 
 type AuthUser = {
   userId: number;
   username: string;
 } | null;
-
-const api = axios.create({
-  baseURL: "http://localhost:3000",
-  withCredentials: true,
-});
 
 export default function AuthFlowTestPage() {
   const navigate = useNavigate();
@@ -31,7 +27,7 @@ export default function AuthFlowTestPage() {
 
     try {
       const me = await fetchMe();
-    
+      
       setUser(me);
       setMessage("로그인된 사용자 상태를 확인했습니다.");
     } catch {
@@ -82,11 +78,11 @@ export default function AuthFlowTestPage() {
     setError("");
 
     try {
-      await api.post("/auth/logout");
+      await api.post("/auth/sign-out");
       setUser(null);
-      setMessage("로그아웃 성공");
+      setMessage("로그아웃 요청 처리 완료");
     } catch {
-      setError("로그아웃 실패");
+      setError("로그아웃 요청 처리 실패");
     }
   }
 
@@ -130,8 +126,8 @@ export default function AuthFlowTestPage() {
         <button onClick={() => navigate('/')}>Back</button>
         <button onClick={handleGetMe}>Get Me (access token 검증)</button>
         <button onClick={handleRefresh}>Refresh Token</button>
-        {/* <button onClick={handleLogout}>Logout</button>
-        <button onClick={handleSilentRefreshTest}>Silent Refresh Test</button> */}
+        <button onClick={handleLogout}>Logout</button>
+        <button onClick={handleSilentRefreshTest}>Silent Refresh Test</button>
       </section>
 
       <section style={{ textAlign: "center" }}>

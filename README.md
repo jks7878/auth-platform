@@ -31,7 +31,7 @@ Auth Platform
 ## Backend
 
 - NestJS 기반 인증 API 서버
-- Prisma ORM + MariaDB
+- Prisma ORM + MariaDB + Redis
 - bcrypt 기반 비밀번호 해싱
 - DTO validation 적용 (class-validator)
 - 회원가입 API 구현
@@ -55,6 +55,13 @@ Auth Platform
 비밀번호는 평문으로 저장되지 않으며 bcrypt 해시값으로 저장됩니다.
 
 bcrypt 해시 문자열에는 salt 정보가 포함되어 있어 별도의 salt 컬럼 없이도 안전하게 검증할 수 있습니다.
+
+## Authentication Design
+
+- access token과 refresh token의 역할을 분리했습니다.
+- 토큰은 localStorage 대신 httpOnly 쿠키로 전달하도록 구성했습니다.
+- 보호 API(`/auth/me`)와 재발급 API(`/auth/refresh`)를 분리해 인증 흐름을 검증할 수 있도록 했습니다.
+- 로그아웃은 멱등적으로 처리해 일관된 클라이언트 동작을 보장했습니다.
 
 ---
 
@@ -120,11 +127,13 @@ auth-platform
 
 ---
 
-## Phase 2 (부분 완료)
+## Phase 2 (완료)
 
 JWT 기반 인증 도입
 
 구현 완료:
+
+- JWT payload 설계
 - access token 발급
 - refresh token 발급
 - JWT access / refresh 전략 구성
@@ -132,22 +141,18 @@ JWT 기반 인증 도입
 - 쿠키 기반 인증 처리
 - `/auth/me` 보호 API 구현
 - `/auth/refresh` 수동 재발급 구현
-
-진행 예정:
-- 로그아웃 처리
-- 자동 refresh 흐름
-- 인증 상태 복구 흐름 정리
+- `/auth/sign-out` 로그아웃 구현
 
 ---
 
-## Phase 3 (예정)
+## Phase 3 (진행중)
 
 토큰 관리 전략
 
-- refresh token rotation
-- 로그아웃 처리
-- 토큰 만료 정책 설계
 - 토큰 저장 전략 검토 (DB 또는 Redis)
+- 토큰 만료&탈취 정책 설계
+- refresh token rotation
+- Silent Refresh 구현
 
 ---
 
