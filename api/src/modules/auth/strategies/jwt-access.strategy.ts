@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+
+/** Services */
+import { ConfigService } from '@nestjs/config';
 
 type AccessTokenPayload = {
   sub: number;
@@ -17,12 +20,10 @@ export class JwtAccessStrategy extends PassportStrategy(
   Strategy,
   'jwt-access',
 ) {
-  constructor() {
-    const accessSecret = process.env.JWT_ACCESS_SECRET;
-    
-    if (!accessSecret) {
-      throw new Error('JWT_ACCESS_SECRET is not defined');
-    }
+  constructor(
+    configService: ConfigService
+  ) {
+    const accessSecret = configService.get<string>('JWT_ACCESS_SECRET')!;
 
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([

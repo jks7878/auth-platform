@@ -1,9 +1,9 @@
 import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
-
 import * as bcrypt from 'bcrypt';
 
-/** Service */
+/** Services */
 import { PrismaService } from '@/modules/prisma/prisma.service';
+import { RefreshService } from './refresh.service';
 import { TokenService } from '@/modules/token/token.service';
 /** DTO */
 import { SignUpDto } from './dto/sign-up.dto';
@@ -14,6 +14,7 @@ import { SignInDto } from './dto/sign-in.dto';
 export class AuthService {
   constructor(
     private readonly prismaService: PrismaService,
+    private readonly refreshService: RefreshService,
     private readonly tokenService: TokenService
   ) {}
 
@@ -62,11 +63,11 @@ export class AuthService {
     if (!isPasswordMatched) {
       throw new UnauthorizedException("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
-  
-    return await this.tokenService.createAuthTokens(user.id, user.username);
-  }
+    
+    const tokens = await this.tokenService.createAuthTokens(user.id, user.username);
 
-  async refresh(id: number, username: string) {
-    return await this.tokenService.refreshAuthTokens(id, username);
+    await this.refreshService.saveRefreshToken(user.id, tokens.refreshToken);
+
+    return tokens;
   }
 }

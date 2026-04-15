@@ -1,8 +1,21 @@
-import * as dotenv from 'dotenv'
-import "dotenv/config";
-import { defineConfig } from "prisma/config";
+import 'dotenv/config';
+import { defineConfig } from 'prisma/config';
 
-dotenv.config({ path: '../.env' })
+const mariadbHost = process.env.MARIADB_HOST;
+const mariadbPort = process.env.MARIADB_PORT;
+const mariadbUser = process.env.MARIADB_USER;
+const mariadbPassword = process.env.MARIADB_PASSWORD;
+const mariadbDatabase = process.env.MARIADB_DATABASE;
+
+if (
+  !mariadbHost ||
+  !mariadbPort ||
+  !mariadbUser ||
+  !mariadbPassword ||
+  !mariadbDatabase
+) {
+  throw new Error("Prisma DB environment variables are not fully defined.");
+}
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -10,6 +23,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: `mysql://${mariadbUser}:${mariadbPassword}@${mariadbHost}:${mariadbPort}/${mariadbDatabase}`,
   },
 });
