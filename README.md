@@ -1,6 +1,6 @@
 # Auth Platform
 
-서비스 간 인증 로직을 분리하고 공통 인증 정책을 적용하기 위한 인증 플랫폼 프로젝트입니다.
+JWT 기반 인증 lifecycle을 설계하고 검증하기 위한 인증 플랫폼 프로젝트입니다.
 
 NestJS 기반 API 서버와 React 기반 테스트 클라이언트를 통해 인증 구조를 단계적으로 설계하고 검증합니다.
 
@@ -30,8 +30,6 @@ Auth Platform
 ---
 
 # Architecture Overview
-
-이 프로젝트는 인증 로직을 각 서비스에서 개별적으로 구현하는 대신, 인증 책임을 하나의 플랫폼으로 분리하는 구조를 목표로 합니다.
 
 NestJS 기반 인증 서버가 사용자 인증과 토큰 lifecycle을 관리하고, React 기반 테스트 클라이언트를 통해 인증 흐름이 실제로 어떻게 동작하는지 단계적으로 검증할 수 있도록 구성했습니다.
 
@@ -102,8 +100,8 @@ JWT 기반 인증 도입
 
 토큰 관리 전략
 
-- 토큰 저장 전략 검토 (DB 또는 Redis)
-- 토큰 만료&탈취 정책 설계
+- 토큰 저장 전략
+- reuse detection 기반 세션 revoke 정책
 - refresh token rotation
 - Silent Refresh 구현
 
