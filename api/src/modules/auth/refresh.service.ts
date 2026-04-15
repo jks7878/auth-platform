@@ -1,65 +1,105 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
+import ms from 'ms';
+import type { StringValue } from 'ms';
 
 /** Services */
+import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@/modules/redis/redis.service';
 import { TokenService } from '@/modules/token/token.service';
 
+type RefreshSlot = 'current' | 'previous';
 
 @Injectable()
 export class RefreshService {
   constructor(
+    private readonly configService: ConfigService,
     private readonly redisService: RedisService,
     private readonly tokenService: TokenService,
   ) {}
-
-  private getRefreshKey(userId: number) {
-    return `refresh:${userId}`;
-  }
 
   private hashToken(token: string) {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  async saveRefreshToken(
-    userId: number,
-    refreshToken: string,
-  ) {
+  private getRefreshKey(userId: number, slot: 'current' | 'previous') {
+    return `refresh:${slot}:${userId}`;
+  }
 
-    const key = `refresh:${userId}`;
-
-    await this.redisService.set(
-      key,
-      this.hashToken(refreshToken),
-      60 * 60 * 24 * 7,
+  private getRefreshTtlSeconds() {
+    return Math.floor(
+      ms(this.configService.get<StringValue>('JWT_REFRESH_EXPIRES_IN')!) / 1000,
     );
   }
-  
-  async validateRefreshToken(userId: number, refreshToken: string) {
-    const key = this.getRefreshKey(userId);
-    
-    const storedHashedToken = await this.redisService.get(key);
-    
-    if (!storedHashedToken) {
-        return false;
-    }
 
-    const currentHashedToken = this.hashToken(refreshToken);
-
-    return storedHashedToken === currentHashedToken;
+  private async saveSlot(
+    userId: number,
+    refreshToken: string,
+    slot: RefreshSlot,
+  ) {
+    await this.redisService.set(
+      this.getRefreshKey(userId, slot),
+      this.hashToken(refreshToken),
+      this.getRefreshTtlSeconds(),
+    );
   }
 
-  async refreshAuthTokens(id: number, username: string, refreshToken: string) {
-    const isValid = await this.validateRefreshToken(id, refreshToken);
-    
-    if (!isValid) {
-        throw new UnauthorizedException('유효하지 않은 refresh token입니다.');
+  private async matchesSlot(
+    userId: number,
+    refreshToken: string,
+    slot: RefreshSlot,
+  ) {
+    const stored = await this.redisService.get(this.getRefreshKey(userId, slot));
+    if (!stored) return false;
+
+    return stored === this.hashToken(refreshToken);
+  }
+
+  private storeCurrent(userId: number, refreshToken: string) {
+    return this.saveSlot(userId, refreshToken, 'current');
+  }
+
+  private storePrevious(userId: number, refreshToken: string) {
+    return this.saveSlot(userId, refreshToken, 'previous');
+  }
+
+  private matchesCurrent(userId: number, refreshToken: string) {
+    return this.matchesSlot(userId, refreshToken, 'current');
+  }
+
+  private matchesPrevious(userId: number, refreshToken: string) {
+    return this.matchesSlot(userId, refreshToken, 'previous');
+  }
+
+  async initializeSession(userId: number, refreshToken: string) {
+    await this.revokeRefreshSession(userId);
+    await this.storeCurrent(userId, refreshToken);
+  }
+
+  async refresh(userId: number, username: string, refreshToken: string) {
+    const isCurrent = await this.matchesCurrent(userId, refreshToken);
+
+    if (isCurrent) {
+      const tokens = await this.tokenService.createAuthTokens(userId, username);
+
+      await this.storePrevious(userId, refreshToken);
+      await this.storeCurrent(userId, tokens.refreshToken);
+
+      return tokens;
     }
 
-    const tokens = await this.tokenService.refreshAuthTokens(id, username);
+    const isReused = await this.matchesPrevious(userId, refreshToken);
 
-    await this.saveRefreshToken(id, tokens.refreshToken);
+    if (isReused) {
+      await this.revokeRefreshSession(userId);
+      throw new UnauthorizedException('Refresh token reuse detected');
+    }
 
-    return tokens;
+    throw new UnauthorizedException('Invalid refresh token');
+  }
+
+  async revokeRefreshSession(userId: number) {
+    await this.redisService.del(this.getRefreshKey(userId, 'current'));
+    await this.redisService.del(this.getRefreshKey(userId, 'previous'));
   }
 }

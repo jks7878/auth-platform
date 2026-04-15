@@ -1,7 +1,8 @@
 # Auth Platform
 
-서비스 간 인증 로직을 분리하기 위한 인증 플랫폼 프로젝트입니다.  
-NestJS 기반 API 서버와 React 기반 테스트 클라이언트를 통해 인증 흐름을 단계적으로 구현하고 있습니다.
+서비스 간 인증 로직을 분리하고 공통 인증 정책을 적용하기 위한 인증 플랫폼 프로젝트입니다.
+
+NestJS 기반 API 서버와 React 기반 테스트 클라이언트를 통해 인증 구조를 단계적으로 설계하고 검증합니다.
 
 ---
 
@@ -18,86 +19,41 @@ Service C
 ↓
 Auth Platform
 ```
-
-이 구조를 통해 다음을 기대할 수 있습니다:
+이 구조를 통해 다음과 같은 효과를 기대할 수 있습니다:
 
 - 인증 로직 중복 제거
 - 인증 정책 중앙 관리
 - 서비스 간 인증 흐름 일관성 유지
 - 확장 가능한 인증 구조 확보
+- 보안 정책 변경 시 영향 범위 최소화
 
 ---
 
-## Backend
+# Architecture Overview
 
-- NestJS 기반 인증 API 서버
-- Prisma ORM + MariaDB + Redis
-- bcrypt 기반 비밀번호 해싱
-- DTO validation 적용 (class-validator)
-- 회원가입 API 구현
-- 로그인 API 구현
-- CORS 설정
+이 프로젝트는 인증 로직을 각 서비스에서 개별적으로 구현하는 대신, 인증 책임을 하나의 플랫폼으로 분리하는 구조를 목표로 합니다.
+NestJS 기반 인증 서버가 사용자 인증과 토큰 lifecycle을 관리하고, React 기반 테스트 클라이언트를 통해 인증 흐름이 실제로 어떻게 동작하는지 단계적으로 검증할 수 있도록 구성했습니다.
 
-### 인증 흐름
+기본 인증 단계에서는 bcrypt 기반 비밀번호 해싱과 validation을 적용하여 사용자 자격 증명을 안전하게 처리합니다. 이후 인증 상태를 stateless하게 유지하기 위해 JWT 기반 access token / refresh token 구조를 도입했으며, 토큰은 httpOnly 쿠키를 통해 전달하여 XSS 환경에서의 노출 가능성을 줄였습니다.
 
-회원가입
+단순 JWT 구조만으로는 refresh token 탈취 시 세션 제어가 어렵기 때문에, refresh token을 Redis에 상태 기반으로 저장하고 rotation 전략을 적용하여 토큰 재사용 공격(replay attack) 가능성을 줄였습니다. 이전 refresh token이 다시 사용될 경우 reuse detection 로직을 통해 세션을 즉시 revoke 하도록 설계하여 인증 상태를 서버에서 통제할 수 있도록 했습니다.
 
-1. username 중복 확인
-2. 비밀번호 bcrypt 해싱
-3. 사용자 정보 DB 저장
+또한 access token 만료 시 사용자 경험이 단절되지 않도록 interceptor 기반 silent refresh를 적용했으며, 테스트 클라이언트를 통해 rotation, reuse detection, revoke 흐름을 시각적으로 확인할 수 있도록 구성했습니다.
 
-로그인
+## Tech Stack
 
-1. username으로 사용자 조회
-2. bcrypt.compare를 사용하여 비밀번호 검증
-3. 인증 성공 시 사용자 정보 반환
-
-비밀번호는 평문으로 저장되지 않으며 bcrypt 해시값으로 저장됩니다.
-
-bcrypt 해시 문자열에는 salt 정보가 포함되어 있어 별도의 salt 컬럼 없이도 안전하게 검증할 수 있습니다.
-
-## Authentication Design
-
-- access token과 refresh token의 역할을 분리했습니다.
-- 토큰은 localStorage 대신 httpOnly 쿠키로 전달하도록 구성했습니다.
-- 보호 API(`/auth/me`)와 재발급 API(`/auth/refresh`)를 분리해 인증 흐름을 검증할 수 있도록 했습니다.
-- 로그아웃은 멱등적으로 처리해 일관된 클라이언트 동작을 보장했습니다.
-
----
-
-## Frontend
-
-React 기반 테스트용 인증 폼
-
-기능:
-
-- sign-in / sign-up 모드 전환
-- 입력값 validation 분리
-- 서버 에러 메시지 표시
-- 로딩 상태 처리
-- axios 기반 인증 요청
-
-sign-up에서는 비밀번호 규칙 및 confirm password 검증을 수행하고  
-sign-in에서는 입력값 존재 여부만 검증합니다.
-
----
-
-# 기술 스택
-
-## Backend
-
+### Backend
 - NestJS
-- Prisma
+- Prisma ORM
 - MariaDB
+- Redis
 - bcrypt
 - class-validator
 
-## Frontend
-
+### Frontend (Test Client)
 - React
 - TypeScript
 - axios
-
 ---
 
 # 프로젝트 구조
@@ -131,11 +87,7 @@ auth-platform
 
 JWT 기반 인증 도입
 
-구현 완료:
-
 - JWT payload 설계
-- access token 발급
-- refresh token 발급
 - JWT access / refresh 전략 구성
 - access / refresh guard 구현
 - 쿠키 기반 인증 처리
@@ -145,7 +97,7 @@ JWT 기반 인증 도입
 
 ---
 
-## Phase 3 (진행중)
+## Phase 3 (완료)
 
 토큰 관리 전략
 
@@ -167,16 +119,11 @@ JWT 기반 인증 도입
 
 ---
 
-# 설계 방향
+# Design Principles
 
-이 프로젝트는 단순 로그인 기능 구현이 아니라 인증 책임을 분리하는 구조 설계를 목표로 합니다.
-
-핵심 방향:
-
-- 인증 로직의 독립성 확보
-- 서비스 간 재사용 가능한 인증 구조
-- 확장 가능한 토큰 기반 인증 방식
-- 단계적 구현을 통한 구조 검증
+- 인증 책임을 서비스로부터 분리하여 재사용 가능한 구조 구성
+- stateless access + stateful refresh 전략을 통한 인증 lifecycle 제어
+- 보안 정책과 사용자 경험 사이의 균형 고려
 
 # 참고
 

@@ -23,6 +23,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: `mysql://${mariadbUser}:${mariadbPassword}@${mariadbHost}:${mariadbPort}/${mariadbDatabase}`,
+    url: `mysql://${mariadbUser}:${mariadbPassword}@${mariadbHost}:${mariadbPort}/${mariadbDatabase}`
   },
 });

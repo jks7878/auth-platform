@@ -1,21 +1,71 @@
-import axios from "axios";
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import type { RetryableRequestConfig } from './types';
+
+type AuthFlowEventDetail = {
+  type: 'silent_refresh_succeeded' | 'silent_refresh_failed';
+  url?: string;
+  message: string;
+  timestamp: number;
+};
+
+function emitAuthFlowEvent(detail: AuthFlowEventDetail) {
+  window.dispatchEvent(
+    new CustomEvent<AuthFlowEventDetail>('auth-flow-event', { detail }),
+  );
+}
 
 export const api = axios.create({
-  baseURL: "http://localhost:3000",
+  baseURL: 'http://localhost:3000',
   withCredentials: true,
 });
 
-// api.interceptors.response.use(
-//   (response) => response,
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as RetryableRequestConfig | undefined;
 
-//   async (error) => {
-//     if (error.response?.status === 401) {
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
 
-//       console.log("인증 만료 → 로그아웃 처리");
+    const status = error.response?.status;
+    const requestUrl = originalRequest.url ?? '';
+    const isRefreshRequest = requestUrl.includes('/auth/refresh');
 
-//       window.location.href = "/";
-//     }
+    if (originalRequest.skipSilentRefresh) {
+      return Promise.reject(error);
+    }
 
-//     return Promise.reject(error);
-//   }
-// );
+    if (status === 401 && !originalRequest._retry && !isRefreshRequest) {
+      originalRequest._retry = true;
+
+      try {
+        await api.post('/auth/refresh');
+
+        emitAuthFlowEvent({
+          type: 'silent_refresh_succeeded',
+          url: requestUrl,
+          message: `Silent refresh succeeded → ${requestUrl}`,
+          timestamp: Date.now(),
+        });
+
+        return api(originalRequest);
+      } catch (refreshError) {
+        emitAuthFlowEvent({
+          type: 'silent_refresh_failed',
+          url: requestUrl,
+          message: `Silent refresh failed → ${requestUrl}`,
+          timestamp: Date.now(),
+        });
+
+        if (!originalRequest.skipAuthRedirect) {
+          window.location.href = '/';
+        }
+
+        return Promise.reject(refreshError);
+      }
+    }
+
+    return Promise.reject(error);
+  },
+);

@@ -18,7 +18,7 @@ export class PrismaService
       port: configService.get<number>('MARIADB_PORT')!,
       user: configService.get<string>('MARIADB_USER')!,
       password: configService.get<string>('MARIADB_PASSWORD')!,
-      database: configService.get<string>('MARIADB_NAME')!
+      database: configService.get<string>('MARIADB_DATABASE'),
     });
 
     super({ adapter });

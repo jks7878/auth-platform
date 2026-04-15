@@ -53,15 +53,21 @@ export class TokenService {
     };
   }
 
-  async refreshAuthTokens(id: number, username: string) {
-    const [accessToken, refreshToken] = await Promise.all([
-      this.createAccessToken(id, username),
-      this.createRefreshToken(id, username),
-    ]);
+  // async refreshAuthTokens(id: number, username: string) {
+  //   const [accessToken, refreshToken] = await Promise.all([
+  //     this.createAccessToken(id, username),
+  //     this.createRefreshToken(id, username),
+  //   ]);
 
-    return {
-      accessToken,
-      refreshToken,
-    };
+  //   return {
+  //     accessToken,
+  //     refreshToken,
+  //   };
+  // }
+
+  async verifyRefreshToken(refreshToken: string) {
+    return this.jwtService.verifyAsync<JwtPayload>(refreshToken, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET')!,
+    });
   }
 }
