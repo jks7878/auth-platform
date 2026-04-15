@@ -59,7 +59,9 @@ NestJS 기반 인증 서버가 사용자 인증과 토큰 lifecycle을 관리하
 ```
 auth-platform
 ├── api # NestJS 인증 서버
-└── web # React 테스트 클라이언트
+├── web # React 테스트 클라이언트
+├── docker # DB init script
+└── docker-compose.yml # 로컬 개발 환경 구성
 ```
 
 # 개발 단계 (Roadmap)
