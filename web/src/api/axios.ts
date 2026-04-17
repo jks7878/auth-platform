@@ -8,10 +8,24 @@ type AuthFlowEventDetail = {
   timestamp: number;
 };
 
+type ApiErrorBody = {
+  message?: string;
+  code?: string;
+};
+
 function emitAuthFlowEvent(detail: AuthFlowEventDetail) {
   window.dispatchEvent(
     new CustomEvent<AuthFlowEventDetail>('auth-flow-event', { detail }),
   );
+}
+
+function isRefreshTokenReuseError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+
+  const data = error.response?.data as ApiErrorBody | undefined;
+  alert(data?.message)
+  alert(data?.code)
+  return data?.code === 'REFRESH_TOKEN_REUSE';
 }
 
 export const api = axios.create({
@@ -57,6 +71,10 @@ api.interceptors.response.use(
           message: `Silent refresh failed → ${requestUrl}`,
           timestamp: Date.now(),
         });
+        
+        if (isRefreshTokenReuseError(refreshError)) {
+          return Promise.reject(refreshError);
+        }
 
         if (!originalRequest.skipAuthRedirect) {
           window.location.href = '/';
