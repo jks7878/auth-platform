@@ -1,5 +1,4 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { createHash } from 'crypto';
 import ms from 'ms';
 import type { StringValue } from 'ms';
 
@@ -7,6 +6,8 @@ import type { StringValue } from 'ms';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@/modules/redis/redis.service';
 import { TokenService } from '@/modules/token/token.service';
+/** utils */
+import { createSha256Hash } from '@/common/util';
 
 type RefreshSlot = 'current' | 'previous';
 
@@ -17,10 +18,6 @@ export class RefreshService {
     private readonly redisService: RedisService,
     private readonly tokenService: TokenService,
   ) {}
-
-  private hashToken(token: string) {
-    return createHash('sha256').update(token).digest('hex');
-  }
 
   private getRefreshKey(userId: number, slot: 'current' | 'previous') {
     return `refresh:${slot}:${userId}`;
@@ -39,7 +36,7 @@ export class RefreshService {
   ) {
     await this.redisService.set(
       this.getRefreshKey(userId, slot),
-      this.hashToken(refreshToken),
+      createSha256Hash(refreshToken),
       this.getRefreshTtlSeconds(),
     );
   }
@@ -52,7 +49,7 @@ export class RefreshService {
     const stored = await this.redisService.get(this.getRefreshKey(userId, slot));
     if (!stored) return false;
 
-    return stored === this.hashToken(refreshToken);
+    return stored === createSha256Hash(refreshToken);
   }
 
   private storeCurrent(userId: number, refreshToken: string) {
@@ -78,7 +75,7 @@ export class RefreshService {
 
   async refresh(userId: number, username: string, refreshToken: string) {
     const isCurrent = await this.matchesCurrent(userId, refreshToken);
-
+    
     if (isCurrent) {
       const tokens = await this.tokenService.createAuthTokens(userId, username);
 
@@ -92,10 +89,16 @@ export class RefreshService {
 
     if (isReused) {
       await this.revokeRefreshSession(userId);
-      throw new UnauthorizedException('Refresh token reuse detected');
+      throw new UnauthorizedException({
+        message: 'Refresh token reuse detected',
+        code: 'REFRESH_TOKEN_REUSE',
+      });
     }
 
-    throw new UnauthorizedException('Invalid refresh token');
+    throw new UnauthorizedException({
+      message: 'Invalid refresh token',
+      code: 'INVALID_REFRESH_TOKEN',
+    });
   }
 
   async revokeRefreshSession(userId: number) {

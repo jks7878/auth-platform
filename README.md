@@ -37,7 +37,7 @@ NestJS 기반 인증 서버가 사용자 인증과 토큰 lifecycle을 관리하
 
 단순 JWT 구조만으로는 refresh token 탈취 시 세션 제어가 어렵기 때문에, refresh token을 Redis에 상태 기반으로 저장하고 rotation 전략을 적용하여 토큰 재사용 공격(replay attack) 가능성을 줄였습니다. 이전 refresh token이 다시 사용될 경우 reuse detection 로직을 통해 세션을 즉시 revoke 하도록 설계하여 인증 상태를 서버에서 통제할 수 있도록 했습니다.
 
-또한 access token 만료 시 사용자 경험이 단절되지 않도록 interceptor 기반 silent refresh를 적용했으며, 테스트 클라이언트를 통해 rotation, reuse detection, revoke 흐름을 시각적으로 확인할 수 있도록 구성했습니다.
+또한 access token 만료 시 사용자 경험이 단절되지 않도록 interceptor 기반 silent refresh를 적용했으며, 테스트 클라이언트를 통해 rotation, reuse detection, revoke 흐름을 시각적으로 확인할 수 있도록 구성했습니다. refresh token lifecycle의 핵심 정책(rotation, reuse detection, revoke)은 별도 서비스로 분리하고 단위 테스트를 통해 상태 변화가 의도한 흐름대로 동작하는지 검증했습니다.
 
 ## Tech Stack
 
@@ -106,6 +106,7 @@ JWT 기반 인증 도입
 - reuse detection 기반 세션 revoke 정책
 - refresh token rotation
 - Silent Refresh 구현
+- 토큰 lifecycle 정책 검증을 위한 단위 테스트 구성
 
 ---
 
