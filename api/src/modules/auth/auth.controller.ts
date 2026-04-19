@@ -133,10 +133,6 @@ export class AuthController {
     @Body() replayRefreshDto: ReplayRefreshDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    if (this.configService.get<string>('NODE_ENV') === 'production') {
-      throw new ForbiddenException('Replay endpoint is disabled in production.');
-    }
-
     const payload = await this.tokenService.verifyRefreshToken(
       replayRefreshDto.refreshToken,
     );

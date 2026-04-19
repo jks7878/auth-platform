@@ -23,8 +23,7 @@ function isRefreshTokenReuseError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) return false;
 
   const data = error.response?.data as ApiErrorBody | undefined;
-  alert(data?.message)
-  alert(data?.code)
+  
   return data?.code === 'REFRESH_TOKEN_REUSE';
 }
 
