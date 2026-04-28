@@ -4,7 +4,7 @@ services:
     env_file:
       - ./api/.env
     ports:
-      - "${MARIADB_PORT}:3306"
+      - "3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./docker/mariadb/init:/docker-entrypoint-initdb.d
@@ -19,7 +19,7 @@ services:
     image: redis:7-alpine
     container_name: auth-platform-redis
     ports:
-      - "${REDIS_PORT}:6379"
+      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -38,10 +38,6 @@ services:
       - ./api/.env
     environment:
       NODE_ENV: development
-      DB_HOST: mariadb
-      DB_PORT: 3306
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
     ports:
       - "3000:3000"
     volumes:

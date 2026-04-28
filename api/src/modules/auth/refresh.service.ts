@@ -1,97 +1,48 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import ms from 'ms';
-import type { StringValue } from 'ms';
 
 /** Services */
-import { ConfigService } from '@nestjs/config';
-import { RedisService } from '@/modules/redis/redis.service';
 import { TokenService } from '@/modules/token/token.service';
-/** utils */
-import { createSha256Hash } from '@/common/util';
-
-type RefreshSlot = 'current' | 'previous';
+/** infrastructure */
+import { RedisRefreshTokenStore } from './infrastructure/redis/redis-refresh-token.store';
 
 @Injectable()
 export class RefreshService {
   constructor(
-    private readonly configService: ConfigService,
-    private readonly redisService: RedisService,
     private readonly tokenService: TokenService,
+    private readonly refreshTokenStore: RedisRefreshTokenStore
   ) {}
 
-  private getRefreshKey(userId: number, slot: 'current' | 'previous') {
-    return `refresh:${slot}:${userId}`;
-  }
-
-  private getRefreshTtlSeconds() {
-    return Math.floor(
-      ms(this.configService.get<StringValue>('JWT_REFRESH_EXPIRES_IN')!) / 1000,
-    );
-  }
-
-  private async saveSlot(
-    userId: number,
-    refreshToken: string,
-    slot: RefreshSlot,
-  ) {
-    await this.redisService.set(
-      this.getRefreshKey(userId, slot),
-      createSha256Hash(refreshToken),
-      this.getRefreshTtlSeconds(),
-    );
-  }
-
-  private async matchesSlot(
-    userId: number,
-    refreshToken: string,
-    slot: RefreshSlot,
-  ) {
-    const stored = await this.redisService.get(this.getRefreshKey(userId, slot));
-    if (!stored) return false;
-
-    return stored === createSha256Hash(refreshToken);
-  }
-
-  private storeCurrent(userId: number, refreshToken: string) {
-    return this.saveSlot(userId, refreshToken, 'current');
-  }
-
-  private storePrevious(userId: number, refreshToken: string) {
-    return this.saveSlot(userId, refreshToken, 'previous');
-  }
-
-  private matchesCurrent(userId: number, refreshToken: string) {
-    return this.matchesSlot(userId, refreshToken, 'current');
-  }
-
-  private matchesPrevious(userId: number, refreshToken: string) {
-    return this.matchesSlot(userId, refreshToken, 'previous');
-  }
-
   async initializeSession(userId: number, refreshToken: string) {
-    await this.revokeRefreshSession(userId);
-    await this.storeCurrent(userId, refreshToken);
+    await this.refreshTokenStore.initializeSession({
+      userId,
+      refreshToken,
+    });
   }
 
   async refresh(userId: number, username: string, refreshToken: string) {
-    const isCurrent = await this.matchesCurrent(userId, refreshToken);
+    const tokens = await this.tokenService.createAuthTokens(userId, username);
     
-    if (isCurrent) {
-      const tokens = await this.tokenService.createAuthTokens(userId, username);
-
-      await this.storePrevious(userId, refreshToken);
-      await this.storeCurrent(userId, tokens.refreshToken);
-
+    const rotateResult = await this.refreshTokenStore.rotateRefreshToken({
+      userId,
+      oldRefreshToken: refreshToken,
+      newRefreshToken: tokens.refreshToken,
+    });
+    
+    if (rotateResult === 'OK') {
       return tokens;
     }
 
-    const isReused = await this.matchesPrevious(userId, refreshToken);
-
-    if (isReused) {
-      await this.revokeRefreshSession(userId);
+    if (rotateResult === 'REUSED') {
       throw new UnauthorizedException({
         message: 'Refresh token reuse detected',
         code: 'REFRESH_TOKEN_REUSE',
+      });
+    }
+
+    if (rotateResult === 'ABSOLUTE_EXPIRED') {
+      throw new UnauthorizedException({
+        message: 'Refresh session expired',
+        code: 'REFRESH_SESSION_EXPIRED',
       });
     }
 
@@ -102,7 +53,6 @@ export class RefreshService {
   }
 
   async revokeRefreshSession(userId: number) {
-    await this.redisService.del(this.getRefreshKey(userId, 'current'));
-    await this.redisService.del(this.getRefreshKey(userId, 'previous'));
+    await this.refreshTokenStore.revokeSession(userId);
   }
 }

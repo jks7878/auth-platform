@@ -23,12 +23,28 @@ export class RedisService implements OnModuleDestroy {
     await this.redisClient.set(key, value);
   }
 
+  async hset(key: string, values: Record<string, string | number>) {
+    return this.redisClient.hset(key, values);
+  }
+
   async get(key: string): Promise<string | null> {
     return this.redisClient.get(key);
   }
 
+  async hget(key: string, field: string) {
+    return this.redisClient.hget(key, field);
+  }
+
   async del(key: string): Promise<number> {
     return this.redisClient.del(key);
+  }
+
+  async eval(
+    script: string,
+    numberOfKeys: number,
+    ...args: Array<string | number>
+  ) {
+    return this.redisClient.eval(script, numberOfKeys, ...args);
   }
 
   async exists(key: string): Promise<boolean> {

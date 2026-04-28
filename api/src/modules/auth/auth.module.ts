@@ -14,6 +14,8 @@ import { RefreshService } from './refresh.service';
 import { JwtAccessStrategy } from './strategies/jwt-access.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 
+import { RedisRefreshTokenStore } from './infrastructure/redis/redis-refresh-token.store';
+
 @Module({
   imports: [
     PassportModule,
@@ -26,7 +28,8 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
     AuthService,
     RefreshService,
     JwtAccessStrategy,
-    JwtRefreshStrategy
+    JwtRefreshStrategy,
+    RedisRefreshTokenStore,
   ],
 })
 export class AuthModule {}
