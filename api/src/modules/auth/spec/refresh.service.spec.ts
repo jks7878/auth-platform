@@ -2,30 +2,19 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 
 import { RefreshService } from '../refresh.service';
-import { RedisService } from '@/modules/redis/redis.service';
 import { TokenService } from '@/modules/token/token.service';
-import { ConfigService } from '@nestjs/config';
-
-import { createSha256Hash } from '@/common/util';
+import { RedisRefreshTokenStore } from '../infrastructure/redis/redis-refresh-token.store';
 
 describe('RefreshService', () => {
   let module: TestingModule;
-  let service: RefreshService;
-  let redisService: jest.Mocked<RedisService>;
+  let refreshService: RefreshService;
   let tokenService: jest.Mocked<TokenService>;
+  let refreshTokenStore: jest.Mocked<RedisRefreshTokenStore>;
 
   beforeEach(async () => {
     module = await Test.createTestingModule({
       providers: [
         RefreshService,
-        {
-          provide: RedisService,
-          useValue: {
-            get: jest.fn(),
-            set: jest.fn(),
-            del: jest.fn(),
-          },
-        },
         {
           provide: TokenService,
           useValue: {
@@ -33,112 +22,118 @@ describe('RefreshService', () => {
           },
         },
         {
-          provide: ConfigService,
+          provide: RedisRefreshTokenStore,
           useValue: {
-            get: jest.fn((key: string) => {
-              if (key === 'JWT_REFRESH_EXPIRES_IN') return '7d';
-              return undefined;
-            }),
+            initializeSession: jest.fn(),
+            rotateRefreshToken: jest.fn(),
+            revokeSession: jest.fn(),
           },
         },
       ],
     }).compile();
 
-    service = module.get(RefreshService);
-    redisService = module.get(RedisService);
+    refreshService = module.get(RefreshService);
     tokenService = module.get(TokenService);
+    refreshTokenStore = module.get(RedisRefreshTokenStore);
   });
+
   afterEach(async () => {
-    await module.close();
     jest.clearAllMocks();
+    await module.close();
   });
 
-  const userId = 1;
-  const username = 'tester';
+  it('should initialize refresh session', async () => {
+    await refreshService.initializeSession(1, 'refresh-token');
 
-  it('should rotate refresh token when current token is used', async () => {
-    const currentToken = 'current-token';
-    const previousToken = 'previous-token';
+    expect(refreshTokenStore.initializeSession).toHaveBeenCalledWith({
+      userId: 1,
+      refreshToken: 'refresh-token',
+    });
+  });
 
-    redisService.get
-    .mockResolvedValueOnce(createSha256Hash(currentToken))    // current
-    .mockResolvedValueOnce(createSha256Hash(previousToken))   // previous
+  it('should return tokens when refresh rotation succeeds', async () => {
+    const tokens = {
+      accessToken: 'access-token',
+      refreshToken: 'new-refresh-token',
+    };
 
-    tokenService.createAuthTokens.mockResolvedValue({
-      accessToken: 'new-access',
-      refreshToken: 'new-refresh',
+    tokenService.createAuthTokens.mockResolvedValueOnce(tokens);
+    refreshTokenStore.rotateRefreshToken.mockResolvedValueOnce('OK');
+
+    const result = await refreshService.refresh(
+      1,
+      'test-user',
+      'old-refresh-token',
+    );
+
+    expect(result).toBe(tokens);
+    expect(tokenService.createAuthTokens).toHaveBeenCalledWith(1, 'test-user');
+    expect(refreshTokenStore.rotateRefreshToken).toHaveBeenCalledWith({
+      userId: 1,
+      oldRefreshToken: 'old-refresh-token',
+      newRefreshToken: 'new-refresh-token',
+    });
+  });
+
+  it('should throw REFRESH_TOKEN_REUSE when refresh token is reused', async () => {
+    tokenService.createAuthTokens.mockResolvedValueOnce({
+      accessToken: 'access-token',
+      refreshToken: 'new-refresh-token',
     });
 
-    const result = await service.refresh(userId, username, currentToken);
-
-    expect(result.accessToken).toBe('new-access');
-    expect(tokenService.createAuthTokens).toHaveBeenCalledWith(userId, username);
-
-    expect(redisService.set).toHaveBeenCalledTimes(2);
-
-    expect(redisService.set).toHaveBeenNthCalledWith(
-      1,
-      `refresh:previous:${userId}`,
-      createSha256Hash(currentToken),
-      7 * 24 * 60 * 60,
-    );
-
-    expect(redisService.set).toHaveBeenNthCalledWith(
-      2,
-      `refresh:current:${userId}`,
-      createSha256Hash('new-refresh'),
-      7 * 24 * 60 * 60,
-    );
-  });
-
-  it('should detect reuse and revoke session', async () => {
-    const currentToken = 'current-token';
-    const previousToken = 'previous-token';
-
-    redisService.get
-    .mockResolvedValueOnce(createSha256Hash(currentToken))    // current
-    .mockResolvedValueOnce(createSha256Hash(previousToken));  // previous
+    refreshTokenStore.rotateRefreshToken.mockResolvedValueOnce('REUSED');
 
     await expect(
-      service.refresh(userId, username, previousToken),
-    ).rejects.toThrow('Refresh token reuse detected');
-
-    expect(redisService.del).toHaveBeenCalledTimes(2);
-    expect(redisService.del).toHaveBeenNthCalledWith(1, `refresh:current:${userId}`);
-    expect(redisService.del).toHaveBeenNthCalledWith(2, `refresh:previous:${userId}`);
-    expect(tokenService.createAuthTokens).not.toHaveBeenCalled();
+      refreshService.refresh(1, 'test-user', 'old-refresh-token'),
+    ).rejects.toMatchObject({
+      response: {
+        message: 'Refresh token reuse detected',
+        code: 'REFRESH_TOKEN_REUSE',
+      },
+    });
   });
 
-  it('should throw if refresh token is invalid', async () => {
-    redisService.get
-    .mockResolvedValueOnce(null)  // current
-    .mockResolvedValueOnce(null); // previous
+  it('should throw REFRESH_SESSION_EXPIRED when refresh session is expired', async () => {
+    tokenService.createAuthTokens.mockResolvedValueOnce({
+      accessToken: 'access-token',
+      refreshToken: 'new-refresh-token',
+    });
+
+    refreshTokenStore.rotateRefreshToken.mockResolvedValueOnce(
+      'ABSOLUTE_EXPIRED',
+    );
 
     await expect(
-      service.refresh(userId, username, 'invalid-token'),
-    ).rejects.toThrow('Invalid refresh token');
-  });
-  
-  it('should revoke both refresh slots', async () => {
-    await service.revokeRefreshSession(userId);
-
-    expect(redisService.del).toHaveBeenCalledTimes(2);
-    expect(redisService.del).toHaveBeenNthCalledWith(1, `refresh:current:${userId}`);
-    expect(redisService.del).toHaveBeenNthCalledWith(2, `refresh:previous:${userId}`);
+      refreshService.refresh(1, 'test-user', 'old-refresh-token'),
+    ).rejects.toMatchObject({
+      response: {
+        message: 'Refresh session expired',
+        code: 'REFRESH_SESSION_EXPIRED',
+      },
+    });
   });
 
-  it('should initialize session by revoking old slots and storing current token', async () => {
-    await service.initializeSession(userId, 'refresh-token');
+  it('should throw INVALID_REFRESH_TOKEN when refresh token is invalid', async () => {
+    tokenService.createAuthTokens.mockResolvedValueOnce({
+      accessToken: 'access-token',
+      refreshToken: 'new-refresh-token',
+    });
 
-    expect(redisService.del).toHaveBeenCalledTimes(2);
-    expect(redisService.del).toHaveBeenNthCalledWith(1, `refresh:current:${userId}`);
-    expect(redisService.del).toHaveBeenNthCalledWith(2, `refresh:previous:${userId}`);
+    refreshTokenStore.rotateRefreshToken.mockResolvedValueOnce('INVALID');
 
-    expect(redisService.set).toHaveBeenCalledTimes(1);
-    expect(redisService.set).toHaveBeenCalledWith(
-      `refresh:current:${userId}`,
-      createSha256Hash('refresh-token'),
-      7 * 24 * 60 * 60,
-    );
+    await expect(
+      refreshService.refresh(1, 'test-user', 'old-refresh-token'),
+    ).rejects.toMatchObject({
+      response: {
+        message: 'Invalid refresh token',
+        code: 'INVALID_REFRESH_TOKEN',
+      },
+    });
+  });
+
+  it('should revoke refresh session', async () => {
+    await refreshService.revokeRefreshSession(1);
+
+    expect(refreshTokenStore.revokeSession).toHaveBeenCalledWith(1);
   });
 });
