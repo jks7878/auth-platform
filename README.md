@@ -1,6 +1,6 @@
 # Auth Platform
 
-여러 서비스에서 중복 구현되기 쉬운 인증 책임을 Auth Platform으로 분리하여, 인증 정책을 일관되게 관리하고 재사용 가능한 구조를 만드는 것을 목표로 합니다.
+**Refresh Token Lifecycle을 고려하고, Rotation / Reuse Detection / Race Condition / Absolute Lifetime을 포함해 설계한 인증 플랫폼**
 
 ---
 
