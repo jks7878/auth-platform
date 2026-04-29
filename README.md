@@ -1,8 +1,6 @@
 # Auth Platform
 
-JWT 기반 인증 lifecycle을 설계하고 검증하기 위한 인증 플랫폼 프로젝트입니다.
-
-NestJS 기반 API 서버와 React 기반 테스트 클라이언트를 통해 인증 구조를 단계적으로 설계하고 검증합니다.
+여러 서비스에서 중복 구현되기 쉬운 인증 책임을 Auth Platform으로 분리하여, 인증 정책을 일관되게 관리하고 재사용 가능한 구조를 만드는 것을 목표로 합니다.
 
 ---
 
@@ -29,33 +27,53 @@ Auth Platform
 
 ---
 
-# Architecture Overview
+## Architecture Overview
 
-NestJS 기반 인증 서버가 사용자 인증과 토큰 lifecycle을 관리하고, React 기반 테스트 클라이언트를 통해 인증 흐름이 실제로 어떻게 동작하는지 단계적으로 검증할 수 있도록 구성했습니다.
+본 프로젝트는 **여러 서비스에서 공통으로 사용할 수 있는 인증 플랫폼**을 목표로 설계되었습니다. 
 
-기본 인증 단계에서는 bcrypt 기반 비밀번호 해싱과 validation을 적용하여 사용자 자격 증명을 안전하게 처리합니다. 이후 인증 상태를 stateless하게 유지하기 위해 JWT 기반 access token / refresh token 구조를 도입했으며, 토큰은 httpOnly 쿠키를 통해 전달하여 XSS 환경에서의 노출 가능성을 줄였습니다.
+NestJS 기반 인증 서버가 사용자 인증과 Refresh Token의 전체 Lifecycle을 중앙에서 관리하며, 서비스 간 인증 로직 중복을 제거하고 정책을 일관되게 적용할 수 있도록 구성했습니다.
 
-단순 JWT 구조만으로는 refresh token 탈취 시 세션 제어가 어렵기 때문에 refresh token을 Redis에 상태 기반으로 저장하고 rotation 전략을 적용하여 토큰 재사용 공격(replay attack)의 위험을 줄였습니다.
+주요 설계 방향은 다음과 같습니다:
 
-이전 refresh token이 다시 사용될 경우 reuse detection 로직을 통해 세션을 즉시 revoke 하도록 설계하여 인증 상태를 서버에서 제어할 수 있도록 했습니다.
+- **Stateless Access Token + Stateful Refresh Token** 조합으로 인증 비용은 최소화하면서 세션 제어 가능성을 확보
+- Refresh Token Rotation과 Reuse Detection을 통해 탈취된 토큰의 위험을 적극적으로 방어
+- Refresh Token의 검증과 상태 전이를 **Redis Lua Script**를 통해 atomic operation으로 처리하여 race condition 문제를 해결
+- Sliding Expiration과 함께 **Absolute Refresh Token Lifetime**을 도입하여 세션의 최대 수명을 제한
+- `RefreshTokenStore`를 별도로 분리하여 Refresh Token의 상태 관리를 오케스트레이션하고, `RefreshService`는 전체 흐름을 조율하는 역할을 담당
 
-또한 access token 만료 시 사용자 경험이 단절되지 않도록 interceptor 기반 silent refresh를 적용했으며, 테스트 클라이언트를 통해 인증 흐름이 실제 환경에서 어떻게 동작하는지 단계적으로 검증할 수 있도록 구성했습니다. 
+또한 httpOnly Cookie와 Axios Interceptor 기반 Silent Refresh를 적용하여 보안과 사용자 경험의 균형을 고려했으며, 단위 테스트를 통해 핵심 정책들의 상태 전이가 의도대로 동작함을 검증했습니다.
 
-refresh token lifecycle의 핵심 정책(rotation, reuse detection, revoke)은 별도 서비스로 분리하고 단위 테스트를 통해 상태 변화가 의도한 흐름대로 동작하는지 검증했습니다.
+이 구조를 통해 인증 시스템의 **보안성**, **확장성**, 그리고 **운영 안정성**을 동시에 추구하였습니다.
 
 ---
-## Authentication Strategy
 
-이 프로젝트는 다음 인증 전략을 기반으로 설계되었습니다.
+## Refresh Token Lifecycle Design
 
-- Access Token + Refresh Token 구조
-- Stateless access token을 통한 인증 비용 최소화
-- Stateful refresh token을 통한 세션 제어 가능성 확보
-- Refresh Token Rotation을 통한 탈취 토큰 무력화
-- Refresh Token Reuse Detection 기반 replay 공격 대응
-- Token Family 기반 revoke 전략 적용
-- Axios interceptor 기반 silent refresh로 사용자 경험 유지
----
+본 프로젝트는 Refresh Token을 단순 저장하는 것이 아닌, **전체 Lifecycle**을 체계적으로 관리하는 데 초점을 맞췄습니다.
+
+### 주요 문제점과 해결 전략
+
+기존 Refresh Token Rotation 구조에서 발생할 수 있는 문제들을 다음과 같이 해결했습니다:
+
+| 문제 | 해결 전략 |
+|------|----------|
+| 검증과 상태 변경 분리로 인한 Race Condition | Redis Lua Script를 통한 Atomic Operation |
+| 탈취된 Refresh Token 재사용 (Replay Attack) | Reuse Detection + 즉시 세션 Revoke |
+| Sliding Expiration으로 인한 무한 세션 연장 | Absolute Refresh Token Lifetime 도입 |
+
+### Atomic State Transition
+
+Refresh Token의 검증, Rotation, Reuse Detection을 하나의 Lua Script로 묶어 **atomic**하게 처리했습니다. 이를 통해 동시 요청 상황에서도 일관된 상태 전이(`OK` 또는 `REUSED → Revoke`)를 보장합니다.
+
+### Session Lifetime Control
+
+- **Sliding Expiration**: 정상 사용 시 Refresh Token 수명 연장
+- **Absolute Lifetime**: 최초 발급 시점부터 최대 수명 제한 (보안 강화)
+
+`RefreshTokenStore`를 별도 분리하여 Refresh Token의 상태 전이를 담당하게 하고, 
+`RefreshService`는 토큰 발급과 Store 응답에 따른 흐름 제어를 담당합니다.
+
+단위 테스트를 통해 모든 상태 전이 시나리오를 검증하여 안정성을 확보했습니다.
 
 ## Tech Stack
 
@@ -109,83 +127,31 @@ auth-platform
 ├── docker-compose.yml # 로컬 개발 환경 구성
 └── docker-compose.prod.yml # 배포 환경 구성
 ```
-
-# 개발 단계 (Roadmap)
-
-이 프로젝트는 단계적으로 확장될 예정입니다.
-
 ---
 
-## Phase 1 (완료)
+## Scalability & Infrastructure Considerations
 
-계정 기반 인증의 최소 기능 구현
+이 프로젝트는 단일 인스턴스 환경에서 동작하지만, 확장을 고려한 구조로 설계되었습니다.
 
-- 회원가입
-- 로그인
-- bcrypt 비밀번호 해싱
-- 입력값 validation
-- React 테스트 폼 구현
-- 서버 에러 처리
-- CORS 설정
+### Stateless 인증 구조
 
----
+access token은 stateless하게 설계되어 인증 서버 확장 시 별도의 세션 동기화가 필요 없습니다.
 
-## Phase 2 (완료)
+### 중앙화된 세션 관리
 
-JWT 기반 인증 도입
+refresh token은 Redis에 저장되어 여러 인스턴스에서 동일한 세션 상태를 공유할 수 있습니다.
 
-- JWT payload 설계
-- JWT access / refresh 전략 구성
-- access / refresh guard 구현
-- 쿠키 기반 인증 처리
-- `/auth/me` 보호 API 구현
-- `/auth/refresh` 수동 재발급 구현
-- `/auth/sign-out` 로그아웃 구현
+### 확장 전략
 
----
+- Auth 서버 수평 확장 (multi-instance)
+- Redis를 통한 shared session store
+- API Gateway를 통한 인증 요청 라우팅
+- 추후 Redis Cluster 기반 확장 가능
 
-## Phase 3 (완료)
+또한 refresh token 상태 전이를 Redis에 집중시켜 인증 서버가 stateless하게 확장될 수 있도록 설계했습니다.
 
-토큰 관리 전략
+### 장애 대응 고려 사항
 
-- 토큰 저장 전략
-- reuse detection 기반 세션 revoke 정책
-- refresh token rotation
-- Silent Refresh 구현
-- 토큰 lifecycle 정책 검증을 위한 단위 테스트 구성
-
-### Auth Test Page
-
-테스트 클라이언트는 인증 lifecycle 검증을 위한 데모 페이지를 제공합니다.
-
-다음 시나리오를 직접 확인할 수 있습니다:
-
-- 로그인 후 인증 상태 유지 확인
-- refresh token rotation 동작 확인
-- reuse detection 발생 시 세션 revoke 확인
-- silent refresh 동작 확인
-
----
-
-## Phase 4 (완료)
-
-플랫폼 실행 환경 구성
-
-- Docker 기반 실행 환경 구성
-- MariaDB / Redis / API / Web 컨테이너 구성
-- Prisma migration 자동 실행 구조 구성
-- 환경변수 기반 구성 구조 정리
-- Nginx 기반 정적 클라이언트 서빙
-- SPA 라우팅 fallback 처리
-
----
-
-# Design Principles
-
-- 인증 책임을 서비스로부터 분리하여 재사용 가능한 구조 구성
-- stateless access token으로 인증 비용을 줄이고 stateful refresh token으로 세션 제어 가능성을 확보합니다.
-- 보안 정책과 사용자 경험 사이의 균형 고려
-
-# 참고
-
-이 프로젝트는 인증 시스템 설계 학습 및 포트폴리오 목적으로 개발되었습니다.
+- Redis 장애 시 refresh 기능 제한 가능
+- access token은 stateless 구조로 인해 기본 인증 유지 가능
+- 향후 circuit breaker 및 fallback 전략 적용 가능
