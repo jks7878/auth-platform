@@ -21,6 +21,7 @@ describe('ROTATE_REFRESH_TOKEN_LUA', () => {
     now?: number;
   }) => {
     const now = params?.now ?? Math.floor(Date.now() / 1000);
+    const graceTTL = 60;
 
     const result = await redis.eval(
       ROTATE_REFRESH_TOKEN_LUA,
@@ -32,6 +33,7 @@ describe('ROTATE_REFRESH_TOKEN_LUA', () => {
       params?.newToken ?? newToken,
       String(refreshTtl),
       String(now),
+      graceTTL
     );
 
     return result as [string, string?];
@@ -51,7 +53,7 @@ describe('ROTATE_REFRESH_TOKEN_LUA', () => {
   beforeEach(async () => {
     await redis.del(currentKey, previousKey, sessionKey);
   });
-
+  
   it('current token이 일치하면 OK를 반환하고 current -> previous 상태 전이를 수행한다', async () => {
     const now = Math.floor(Date.now() / 1000);
     const absoluteExpiresAt = now + 3600;
@@ -101,12 +103,12 @@ describe('ROTATE_REFRESH_TOKEN_LUA', () => {
     await expect(redis.exists(sessionKey)).resolves.toBe(0);
   });
 
-  it('absoluteExpiresAt이 없으면 ABSOLUTE_EXPIRED를 반환한다', async () => {
+  it('absoluteExpiresAt이 없으면 INVALID를 반환한다', async () => {
     await redis.set(currentKey, oldToken, 'EX', refreshTtl);
 
     const [status] = await evalRotate();
 
-    expect(status).toBe('ABSOLUTE_EXPIRED');
+    expect(status).toBe('INVALID');
   });
 
   it('absolute lifetime이 만료되면 ABSOLUTE_EXPIRED를 반환하고 세션을 제거한다', async () => {
@@ -150,7 +152,7 @@ describe('ROTATE_REFRESH_TOKEN_LUA', () => {
 
     expect(currentTtl).toBeLessThanOrEqual(10);
     expect(previousTtl).toBeLessThanOrEqual(10);
-    expect(sessionTtl).toBeLessThanOrEqual(10);
+    expect(sessionTtl).toBeLessThanOrEqual(70);
   });
 
   it('current / previous 어느 쪽에도 일치하지 않으면 INVALID를 반환한다', async () => {

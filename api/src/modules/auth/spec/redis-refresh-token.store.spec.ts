@@ -12,6 +12,8 @@ describe('RedisRefreshTokenStore', () => {
     let refreshTokenStore: RedisRefreshTokenStore;
     let redisService: jest.Mocked<RedisService>;
 
+    const graceTTL = 60;
+
     beforeEach(async () => {
         jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
 
@@ -79,6 +81,7 @@ describe('RedisRefreshTokenStore', () => {
             createSha256Hash('new-refresh-token'),
             String(refreshTtl),
             expect.any(String),
+            String(graceTTL)
         );
     });
 
@@ -118,7 +121,7 @@ describe('RedisRefreshTokenStore', () => {
 
     expect(redisService.expire).toHaveBeenCalledWith(
         `refresh:session:${userId}`,
-        absoluteTtl
+        absoluteTtl + graceTTL
     );
   });
 });
