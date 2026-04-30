@@ -25,11 +25,13 @@ if remainingAbsoluteTtl < refreshTtl then
   finalTtl = remainingAbsoluteTtl
 end
 
+local graceTtl = tonumber(ARGV[5])
+
 if current and current == ARGV[1] then
   redis.call("SET", KEYS[2], ARGV[1], "EX", finalTtl)
   redis.call("SET", KEYS[1], ARGV[2], "EX", finalTtl)
   redis.call("HSET", KEYS[3], "updatedAt", ARGV[4])
-  redis.call("EXPIRE", KEYS[3], remainingAbsoluteTtl)
+  redis.call("EXPIRE", KEYS[3], remainingAbsoluteTtl + graceTtl)
   return { "OK", tostring(finalTtl) }
 end
 

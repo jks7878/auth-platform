@@ -65,9 +65,11 @@ export class RedisRefreshTokenStore {
       updatedAt: String(now),
     });
 
+    const ABSOLUTE_EXPIRED_GRACE_SECONDS = 60;
+
     await this.redisService.expire(
       this.sessionKey(params.userId),
-      this.getAbsoluteTtlSeconds(),
+      this.getAbsoluteTtlSeconds() + ABSOLUTE_EXPIRED_GRACE_SECONDS,
     );
   }
 
@@ -89,6 +91,7 @@ export class RedisRefreshTokenStore {
       createSha256Hash(params.newRefreshToken),
       String(refreshTtl),
       String(now),
+      String(60),
     );
 
     const [status] = result as [string];
