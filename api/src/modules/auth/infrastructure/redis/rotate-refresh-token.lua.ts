@@ -4,7 +4,7 @@ local previous = redis.call("GET", KEYS[2])
 local absoluteExpiresAt = redis.call("HGET", KEYS[3], "absoluteExpiresAt")
 
 if not absoluteExpiresAt then
-  return { "ABSOLUTE_EXPIRED" }
+  return { "INVALID" }
 end
 
 local now = tonumber(ARGV[4])
